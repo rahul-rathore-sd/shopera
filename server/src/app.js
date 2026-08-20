@@ -11,6 +11,8 @@ import paymentRouter from "./routes/payment.routes.js";
 
 const app = express();
 
+app.set("trust proxy", 1); // Trust first proxy for secure cookie flags
+
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN,
