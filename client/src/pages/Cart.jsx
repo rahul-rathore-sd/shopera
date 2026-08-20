@@ -142,9 +142,8 @@ export default function Cart() {
             return (
               <div
                 key={item._id}
-                className={`flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition sm:flex-row sm:items-center sm:justify-between ${
-                  isUpdating === item._id ? "opacity-60 pointer-events-none" : ""
-                }`}
+                className={`flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition sm:flex-row sm:items-center sm:justify-between ${isUpdating === item._id ? "opacity-60 pointer-events-none" : ""
+                  }`}
               >
                 {/* Product Thumbnail & Details */}
                 <div className="flex items-center gap-4">
