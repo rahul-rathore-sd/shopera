@@ -11,6 +11,7 @@
     "dev": "nodemon server.js",
     "build": "echo 'Server ready'",
     "seed:products": "node src/scripts/seedDemoProducts.js",
+    "seed:50": "node src/scripts/seed50Products.js",
     "seed:users": "node src/scripts/seedDemoUsers.js"
   },
   "engines": {
