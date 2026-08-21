@@ -47,8 +47,16 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-    exposedHeaders: ["Set-Cookie"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "x-rtb-fingerprint-id",
+      "request-id",
+      "x-razorpay-signature",
+    ],
+    exposedHeaders: ["Set-Cookie", "x-rtb-fingerprint-id", "request-id"],
   })
 );
 

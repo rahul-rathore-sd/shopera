@@ -114,7 +114,7 @@ export const createOrder = asyncHandler(async (req, res) => {
           },
           paymentInfo: {
             method: paymentMethod,
-            status: paymentMethod === "demo_pay" || paymentMethod === "mock" ? "paid" : "pending",
+            status: paymentMethod === "cod" ? "pending" : "pending",
           },
           deliveryPreferences: req.body?.deliveryPreferences || {
             preferredSlot: "anytime",
@@ -123,7 +123,7 @@ export const createOrder = asyncHandler(async (req, res) => {
           deliveryAgent: {
             deliveryOtp,
           },
-          orderStatus: paymentMethod === "demo_pay" || paymentMethod === "mock" ? "confirmed" : "placed",
+          orderStatus: "placed",
         },
       ],
       { session }
