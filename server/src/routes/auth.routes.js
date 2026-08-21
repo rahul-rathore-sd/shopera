@@ -15,8 +15,10 @@ import {
   setDefaultAddress,
   forgotPassword,
   resetPassword,
+  getAllUsersAdmin,
+  updateUserRoleAdmin,
 } from "../controllers/auth.controller.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { verifyJWT, verifyAdmin } from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
 
 const router = Router();
@@ -45,4 +47,9 @@ router.put("/addresses/:addressId", updateAddress);
 router.delete("/addresses/:addressId", deleteAddress);
 router.patch("/addresses/:addressId/default", setDefaultAddress);
 
-export default router;
+// Admin User Management
+router.get("/admin/users", verifyAdmin, getAllUsersAdmin);
+router.patch("/admin/users/:id/role", verifyAdmin, updateUserRoleAdmin);
+
+export default router;
+

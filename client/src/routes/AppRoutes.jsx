@@ -71,7 +71,15 @@ export default function AppRoutes() {
 
       {/* Protected Admin Routes */}
       <Route element={<AdminRoute />}>
+        <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/admin/products" element={<AdminDashboard />} />
+        <Route path="/admin/orders" element={<AdminDashboard />} />
+        <Route path="/admin/categories" element={<AdminDashboard />} />
+        <Route path="/admin/crm" element={<AdminDashboard />} />
+        <Route path="/admin/discounts" element={<AdminDashboard />} />
+        <Route path="/admin/inventory" element={<AdminDashboard />} />
+        <Route path="/admin/:tab" element={<AdminDashboard />} />
       </Route>
     </Routes>
   );

@@ -5,6 +5,9 @@ import { Loader2 } from 'lucide-react';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import AppRoutes from './routes/AppRoutes';
+import { initializeTheme } from './store/useThemeStore';
+
+initializeTheme();
 
 export default function App() {
   const { isLoading, checkAuth, logout } = useAuthStore();

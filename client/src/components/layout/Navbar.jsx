@@ -29,9 +29,12 @@ import {
   ArrowRight,
   Globe,
   Compass,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useCartStore } from "../../store/useCartStore";
+import { useThemeStore } from "../../store/useThemeStore";
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -46,6 +49,7 @@ export default function Navbar() {
 
   const { user, isAuthenticated, logout } = useAuthStore();
   const { fetchCart, getTotalItemCount } = useCartStore();
+  const { theme, toggleTheme } = useThemeStore();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -137,6 +141,18 @@ export default function Navbar() {
 
           {/* Right Utilities */}
           <div className="hidden items-center gap-4 text-[11px] font-medium text-slate-400 sm:flex">
+            {user?.role === "admin" && (
+              <>
+                <Link
+                  to="/admin/dashboard"
+                  className="flex items-center gap-1.5 rounded-lg bg-purple-600/20 px-2 py-0.5 font-bold text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 hover:text-white transition"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 text-purple-400" />
+                  <span>Admin Console</span>
+                </Link>
+                <span>•</span>
+              </>
+            )}
             <Link
               to="/orders"
               className="flex items-center gap-1 hover:text-white transition"
@@ -216,6 +232,28 @@ export default function Navbar() {
 
           {/* Right Action Hub */}
           <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-600 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+
+            {/* Admin Dashboard Quick Button for Admins */}
+            {user?.role === "admin" && (
+              <Link
+                to="/admin/dashboard"
+                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-md shadow-purple-600/20 hover:opacity-95 transition"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                <span className="hidden sm:inline">Admin Dashboard</span>
+                <span className="sm:hidden">Admin</span>
+              </Link>
+            )}
+
             {/* Quick Track Order Link */}
             <Link
               to="/orders"
@@ -303,14 +341,36 @@ export default function Navbar() {
                         </Link>
 
                         {user?.role === "admin" && (
-                          <Link
-                            to="/admin/dashboard"
-                            onClick={() => setUserMenuOpen(false)}
-                            className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50 transition"
-                          >
-                            <ShieldCheck className="h-4 w-4" />
-                            <span>Admin Management</span>
-                          </Link>
+                          <>
+                            <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+                            <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                              Admin Controls
+                            </div>
+                            <Link
+                              to="/admin/dashboard"
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50 dark:text-purple-300 dark:hover:bg-purple-950/40 transition"
+                            >
+                              <ShieldCheck className="h-4 w-4 text-purple-600" />
+                              <span>Admin Console</span>
+                            </Link>
+                            <Link
+                              to="/admin/products"
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 dark:text-slate-200 dark:hover:bg-slate-800 transition"
+                            >
+                              <Package className="h-4 w-4 text-indigo-600" />
+                              <span>Products Management</span>
+                            </Link>
+                            <Link
+                              to="/admin/orders"
+                              onClick={() => setUserMenuOpen(false)}
+                              className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 dark:text-slate-200 dark:hover:bg-slate-800 transition"
+                            >
+                              <Truck className="h-4 w-4 text-emerald-600" />
+                              <span>Orders & Dispatch</span>
+                            </Link>
+                          </>
                         )}
                       </div>
 

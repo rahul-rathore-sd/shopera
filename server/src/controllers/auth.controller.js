@@ -565,4 +565,37 @@ export const resetPassword = asyncHandler(async (req, res) => {
         "Password has been reset successfully"
       )
     );
+});
+
+// 16. Get All Users (Admin)
+export const getAllUsersAdmin = asyncHandler(async (req, res) => {
+  const users = await User.find()
+    .select("-password -refreshToken -passwordResetToken -passwordResetExpires")
+    .sort({ createdAt: -1 });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, users, "Users retrieved successfully"));
+});
+
+// 17. Update User Role (Admin)
+export const updateUserRoleAdmin = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  if (!["admin", "customer"].includes(role)) {
+    throw new ApiError(400, "Role must be either 'admin' or 'customer'");
+  }
+
+  const user = await User.findById(id).select("-password -refreshToken");
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  user.role = role;
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, `User role updated to ${role}`));
 });

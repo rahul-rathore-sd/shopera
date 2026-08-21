@@ -3,10 +3,13 @@ import { ApiError } from "../utils/ApiError.js";
 const errorHandler = (err, req, res, next) => {
   let error = err;
 
-  // Log error on the server for debugging
-  console.error("❌ [API Error]:", err?.message || err);
-  if (process.env.NODE_ENV === "development" && err?.stack) {
-    console.error(err.stack);
+  // Log unexpected errors on the server for debugging
+  const statusCode = err.statusCode || (err instanceof ApiError ? err.statusCode : 500);
+  if (statusCode >= 500) {
+    console.error("❌ [Server Error]:", err?.message || err);
+    if (err?.stack) console.error(err.stack);
+  } else if (statusCode !== 401 && statusCode !== 404) {
+    console.warn(`⚠️ [API Warning ${statusCode}]:`, err?.message || err);
   }
 
   // Handle Mongoose / MongoDB Specific Errors

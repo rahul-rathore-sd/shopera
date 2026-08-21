@@ -147,9 +147,12 @@ export const createOrder = asyncHandler(async (req, res) => {
   }
 });
 
-// 2. Get User Orders
+// 2. Get User Orders (or All Orders if Admin)
 export const getMyOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
+  const query = req.user.role === "admin" ? {} : { user: req.user._id };
+  const orders = await Order.find(query)
+    .populate("user", "name email")
+    .sort({ createdAt: -1 });
 
   return res
     .status(200)

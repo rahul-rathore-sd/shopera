@@ -13,20 +13,25 @@ const app = express();
 
 app.set("trust proxy", 1); // Trust first proxy for secure cookie flags
 
-const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  ...(process.env.CORS_ORIGIN || "").split(",").map((o) => o.trim()),
+].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
         return callback(null, true);
       }
       return callback(new Error("Origin is not allowed by CORS"));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    exposedHeaders: ["Set-Cookie"],
   })
 );
 

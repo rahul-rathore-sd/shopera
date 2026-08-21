@@ -22,18 +22,40 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
+// Automatically attach stored JWT token to all requests if present
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("shopera_token");
+    if (token && !config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Prevent infinite loop on auth endpoints
+    // Prevent refresh token attempts on auth utility endpoints or if already retried
+    const isAuthEndpoint =
+      !originalRequest ||
+      !originalRequest.url ||
+      originalRequest.url.includes("/auth/login") ||
+      originalRequest.url.includes("/auth/register") ||
+      originalRequest.url.includes("/auth/refresh-token") ||
+      originalRequest.url.includes("/auth/logout") ||
+      originalRequest.url.includes("/auth/me");
+
+    const hasStoredToken = !!localStorage.getItem("shopera_token");
+
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url.includes('/auth/login') &&
-      !originalRequest.url.includes('/auth/register') &&
-      !originalRequest.url.includes('/auth/refresh-token')
+      !isAuthEndpoint &&
+      hasStoredToken
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -47,12 +69,18 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        await api.post('/auth/refresh-token', {});
-        processQueue(null);
+        const res = await api.post("/auth/refresh-token", {});
+        const newAccessToken = res.data?.data?.accessToken;
+        if (newAccessToken) {
+          localStorage.setItem("shopera_token", newAccessToken);
+          api.defaults.headers.common["Authorization"] = `Bearer ${newAccessToken}`;
+        }
+        processQueue(null, newAccessToken);
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        window.dispatchEvent(new Event('auth:unauthorized'));
+        localStorage.removeItem("shopera_token");
+        window.dispatchEvent(new Event("auth:unauthorized"));
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

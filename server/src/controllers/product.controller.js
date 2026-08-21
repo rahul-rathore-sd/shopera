@@ -42,8 +42,8 @@ export const createProduct = asyncHandler(async (req, res) => {
     brand: brand?.trim() || "Generic",
     category,
     images: images || [],
-    basePrice,
-    baseDiscountPrice,
+    basePrice: Number(basePrice),
+    baseDiscountPrice: baseDiscountPrice !== undefined && baseDiscountPrice !== "" ? Number(baseDiscountPrice) : undefined,
     stock: hasVariants ? 0 : Number(stock) || 0,
     hasVariants: Boolean(hasVariants),
     variants: hasVariants ? variants : [],
@@ -57,7 +57,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     .json(new ApiResponse(201, product, "Product created successfully"));
 });
 
-// 2. Get All Products with Search, Multi-faceted Filtering, Sorting & Pagination (Public)
+// 2. Get All Products with Multi-Faceted Filtering, Search, Sorting & Pagination (Public)
 export const getAllProducts = asyncHandler(async (req, res) => {
   const {
     search,
@@ -68,6 +68,8 @@ export const getAllProducts = asyncHandler(async (req, res) => {
     rating,
     inStock,
     tags,
+    dealType,
+    hasDiscount,
     featured,
     sortBy = "newest",
     page = 1,
@@ -75,45 +77,106 @@ export const getAllProducts = asyncHandler(async (req, res) => {
   } = req.query;
 
   const query = { isPublished: true };
+  const andClauses = [];
 
   // 1. Text & Fuzzy Search
   if (search && search.trim() !== "") {
     const searchRegex = new RegExp(search.trim(), "i");
-    query.$or = [
-      { title: { $regex: searchRegex } },
-      { brand: { $regex: searchRegex } },
-      { tags: { $in: [searchRegex] } },
-      { description: { $regex: searchRegex } },
-    ];
+    andClauses.push({
+      $or: [
+        { title: { $regex: searchRegex } },
+        { brand: { $regex: searchRegex } },
+        { tags: { $in: [searchRegex] } },
+        { description: { $regex: searchRegex } },
+      ],
+    });
   }
 
-  // 2. Category Filter (by ObjectId or Category Slug)
-  if (category) {
-    if (mongoose.Types.ObjectId.isValid(category)) {
-      query.category = new mongoose.Types.ObjectId(category);
+  // 2. Category Filter (by ObjectId, Slug, or Name)
+  if (category && category.trim() !== "") {
+    const catTrimmed = category.trim();
+    if (mongoose.Types.ObjectId.isValid(catTrimmed)) {
+      query.category = new mongoose.Types.ObjectId(catTrimmed);
     } else {
-      const foundCategory = await Category.findOne({ slug: category });
+      const foundCategory = await Category.findOne({
+        $or: [
+          { slug: catTrimmed },
+          { slug: new RegExp(`^${catTrimmed}$`, "i") },
+          { slug: new RegExp(`^${catTrimmed}`, "i") },
+          { name: new RegExp(`^${catTrimmed}`, "i") },
+        ],
+      });
       if (foundCategory) {
         query.category = foundCategory._id;
       }
     }
   }
 
-  // 3. Brand Filter (Supports comma-separated: ?brand=Nike,Adidas)
-  if (brand) {
-    const brands = brand.split(",").map((b) => new RegExp(`^${b.trim()}$`, "i"));
-    query.brand = { $in: brands };
+  // 3. Brand Filter (Supports comma-separated or single brand)
+  if (brand && brand.trim() !== "") {
+    const brands = brand
+      .split(",")
+      .map((b) => b.trim())
+      .filter(Boolean)
+      .map((b) => new RegExp(`^${b}$`, "i"));
+    if (brands.length > 0) {
+      query.brand = { $in: brands };
+    }
   }
 
-  // 4. Price Range Filter
-  if (minPrice !== undefined || maxPrice !== undefined) {
-    query.basePrice = {};
-    if (minPrice !== undefined) query.basePrice.$gte = Number(minPrice);
-    if (maxPrice !== undefined) query.basePrice.$lte = Number(maxPrice);
+  // 4. Price Range Filter (Accurately evaluates selling price: baseDiscountPrice || basePrice)
+  const hasMinPrice =
+    minPrice !== undefined &&
+    minPrice !== "" &&
+    minPrice !== null &&
+    !isNaN(Number(minPrice));
+  const hasMaxPrice =
+    maxPrice !== undefined &&
+    maxPrice !== "" &&
+    maxPrice !== null &&
+    !isNaN(Number(maxPrice));
+
+  if (hasMinPrice || hasMaxPrice) {
+    const minVal = hasMinPrice ? Number(minPrice) : null;
+    const maxVal = hasMaxPrice ? Number(maxPrice) : null;
+
+    const discountCondition = {};
+    const regularCondition = {};
+    if (minVal !== null) {
+      discountCondition.$gte = minVal;
+      regularCondition.$gte = minVal;
+    }
+    if (maxVal !== null) {
+      discountCondition.$lte = maxVal;
+      regularCondition.$lte = maxVal;
+    }
+
+    andClauses.push({
+      $or: [
+        {
+          $and: [
+            { baseDiscountPrice: { $exists: true, $ne: null, $gt: 0 } },
+            { baseDiscountPrice: discountCondition },
+          ],
+        },
+        {
+          $and: [
+            {
+              $or: [
+                { baseDiscountPrice: null },
+                { baseDiscountPrice: { $exists: false } },
+                { baseDiscountPrice: 0 },
+              ],
+            },
+            { basePrice: regularCondition },
+          ],
+        },
+      ],
+    });
   }
 
   // 5. Ratings Filter
-  if (rating) {
+  if (rating !== undefined && rating !== "" && !isNaN(Number(rating))) {
     query.ratingsAverage = { $gte: Number(rating) };
   }
 
@@ -122,18 +185,59 @@ export const getAllProducts = asyncHandler(async (req, res) => {
     query.stock = { $gt: 0 };
   }
 
-  // 7. Tags Filter (Supports comma-separated: ?tags=summer,sale)
-  if (tags) {
-    const tagArray = tags.split(",").map((t) => t.trim().toLowerCase());
-    query.tags = { $in: tagArray };
+  // 7. Deals & Badges Filter
+  const activeTags = [];
+  if (tags && tags.trim() !== "") {
+    activeTags.push(
+      ...tags
+        .split(",")
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean)
+    );
   }
 
-  // 8. Featured Filter
+  if (dealType && dealType !== "all") {
+    if (dealType === "featured") {
+      query.featured = true;
+    } else if (dealType === "sale" || dealType === "discount") {
+      query.baseDiscountPrice = { $exists: true, $ne: null, $gt: 0 };
+    } else if (dealType === "deals" || dealType === "hot") {
+      andClauses.push({
+        $or: [
+          { tags: { $in: ["deals", "hot", "sale"] } },
+          { baseDiscountPrice: { $exists: true, $ne: null, $gt: 0 } },
+        ],
+      });
+    } else if (dealType === "bestseller") {
+      andClauses.push({
+        $or: [
+          { tags: { $in: ["bestseller"] } },
+          { ratingsAverage: { $gte: 4.8 } },
+        ],
+      });
+    } else {
+      activeTags.push(dealType.trim().toLowerCase());
+    }
+  }
+
+  if (activeTags.length > 0) {
+    query.tags = { $in: activeTags };
+  }
+
+  if (hasDiscount === "true") {
+    query.baseDiscountPrice = { $exists: true, $ne: null, $gt: 0 };
+  }
+
   if (featured === "true") {
     query.featured = true;
   }
 
-  // 9. Sorting Strategy
+  // Combine AND clauses if present
+  if (andClauses.length > 0) {
+    query.$and = andClauses;
+  }
+
+  // 8. Sorting Strategy
   const sortOptions = {};
   switch (sortBy) {
     case "price_asc":
@@ -157,7 +261,7 @@ export const getAllProducts = asyncHandler(async (req, res) => {
       break;
   }
 
-  // 10. Pagination Calculations
+  // 9. Pagination Calculations
   const currentPage = Math.max(1, parseInt(page, 10));
   const itemsPerPage = Math.min(50, Math.max(1, parseInt(limit, 10)));
   const skip = (currentPage - 1) * itemsPerPage;
@@ -193,14 +297,14 @@ export const getAllProducts = asyncHandler(async (req, res) => {
   );
 });
 
-// 3. Get Product by Slug (Public)
+// 3. Get Single Product by Slug (Public)
 export const getProductBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const product = await Product.findOne({ slug, isPublished: true }).populate(
-    "category",
-    "name slug"
-  );
+  const product = await Product.findOne({
+    slug: slug.toLowerCase(),
+    isPublished: true,
+  }).populate("category", "name slug");
 
   if (!product) {
     throw new ApiError(404, "Product not found");
@@ -211,9 +315,13 @@ export const getProductBySlug = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, product, "Product fetched successfully"));
 });
 
-// 4. Get Single Product by ID (Admin / Dashboard)
+// 4. Get Single Product by ID (Admin / Public)
 export const getProductById = asyncHandler(async (req, res) => {
   const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, "Invalid product ID format");
+  }
 
   const product = await Product.findById(id).populate("category", "name slug");
   if (!product) {
@@ -238,11 +346,15 @@ export const updateProduct = asyncHandler(async (req, res) => {
   if (updates.category) {
     const categoryExists = await Category.findById(updates.category);
     if (!categoryExists) {
-      throw new ApiError(404, "Target category does not exist");
+      throw new ApiError(404, "Category does not exist");
     }
   }
 
-  // Update allowed fields and let pre-save hooks execute
+  if (updates.hasVariants && (!updates.variants || updates.variants.length === 0)) {
+    throw new ApiError(400, "Variants array cannot be empty when hasVariants is true");
+  }
+
+  // Update fields
   Object.keys(updates).forEach((key) => {
     product[key] = updates[key];
   });
@@ -254,7 +366,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, product, "Product updated successfully"));
 });
 
-// 6. Delete Product (Admin)
+// 5. Delete Product (Admin)
 export const deleteProduct = asyncHandler(async (req, res) => {
   const { id } = req.params;
 

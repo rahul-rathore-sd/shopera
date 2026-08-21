@@ -6,7 +6,7 @@ import { useAuthStore } from "../store/useAuthStore";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isAuthenticated } = useAuthStore();
+  const { user, login, isAuthenticated } = useAuthStore();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -17,14 +17,22 @@ export default function Login() {
   const [apiError, setApiError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Retrieve destination redirect (defaults to "/")
-  const redirectPath = new URLSearchParams(location.search).get("redirect") || location.state?.from || "/";
+  // Retrieve destination redirect
+  const queryRedirect = new URLSearchParams(location.search).get("redirect");
+  const stateRedirect = location.state?.from;
+  const rawRedirect = queryRedirect || stateRedirect;
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate(redirectPath, { replace: true });
+    if (isAuthenticated && user) {
+      if (rawRedirect && rawRedirect !== "/") {
+        navigate(rawRedirect, { replace: true });
+      } else if (user.role === "admin") {
+        navigate("/admin/dashboard", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     }
-  }, [isAuthenticated, navigate, redirectPath]);
+  }, [isAuthenticated, user, navigate, rawRedirect]);
 
   const validate = () => {
     const errors = {};
@@ -52,15 +60,20 @@ export default function Login() {
     if (apiError) setApiError("");
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-
+  const executeLogin = async (credentials) => {
     try {
       setIsSubmitting(true);
       setApiError("");
-      await login(formData);
-      navigate(redirectPath, { replace: true });
+      const res = await login(credentials);
+      const loggedUser = res.data.user;
+
+      if (rawRedirect && rawRedirect !== "/") {
+        navigate(rawRedirect, { replace: true });
+      } else if (loggedUser?.role === "admin") {
+        navigate("/admin/dashboard", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     } catch (err) {
       setApiError(
         err.response?.data?.message || "Invalid credentials. Please verify your email and password."
@@ -68,6 +81,12 @@ export default function Login() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+    await executeLogin(formData);
   };
 
   return (
@@ -173,12 +192,45 @@ export default function Login() {
               <span>Sign In</span>
             )}
           </button>
+
+          {/* Quick Demo Credentials Autofill */}
+          <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 pt-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center mb-2">
+              Quick One-Click Demo Access
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData({
+                    email: "admin@shopera.demo",
+                    password: "Admin@12345",
+                  })
+                }
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/80 px-2.5 py-1.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition"
+              >
+                <span>🔑 Admin Role</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData({
+                    email: "customer@shopera.demo",
+                    password: "Customer@12345",
+                  })
+                }
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition"
+              >
+                <span>🛍️ Customer Role</span>
+              </button>
+            </div>
+          </div>
         </form>
 
         <p className="text-center text-xs text-slate-500">
           Don&apos;t have an account?{" "}
           <Link
-            to={redirectPath !== "/" ? `/register?redirect=${encodeURIComponent(redirectPath)}` : "/register"}
+            to={rawRedirect && rawRedirect !== "/" ? `/register?redirect=${encodeURIComponent(rawRedirect)}` : "/register"}
             className="font-bold text-indigo-600 hover:underline"
           >
             Create an account
