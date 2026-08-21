@@ -5,7 +5,12 @@
 // Server-to-Server Webhook: Cryptographically verifies asynchronous events (order.paid, payment.failed) to prevent race conditions or dropped network connections.
 
 import crypto from "crypto";
-import { razorpayInstance } from "../config/razorpay.js";
+import {
+  razorpayInstance,
+  RAZORPAY_KEY_ID,
+  RAZORPAY_KEY_SECRET,
+  RAZORPAY_WEBHOOK_SECRET,
+} from "../config/razorpay.js";
 import { Order } from "../models/Order.js";
 import { Cart } from "../models/Cart.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -50,7 +55,7 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
           id: razorpayOrder.id,
           amount: razorpayOrder.amount,
           currency: razorpayOrder.currency,
-          key: process.env.RAZORPAY_KEY_ID,
+          key: RAZORPAY_KEY_ID,
           orderId: order._id,
         },
         "Razorpay order generated successfully"
@@ -86,7 +91,7 @@ export const verifyPaymentSignature = asyncHandler(async (req, res) => {
   // Generate HMAC-SHA256 signature
   const body = razorpay_order_id + "|" + razorpay_payment_id;
   const expectedSignature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+    .createHmac("sha256", RAZORPAY_KEY_SECRET)
     .update(body)
     .digest("hex");
 
@@ -123,7 +128,7 @@ export const handleRazorpayWebhook = asyncHandler(async (req, res) => {
 
   // Webhooks require the raw string buffer for signature verification
   const expectedSignature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET)
+    .createHmac("sha256", RAZORPAY_WEBHOOK_SECRET)
     .update(JSON.stringify(req.body))
     .digest("hex");
 
