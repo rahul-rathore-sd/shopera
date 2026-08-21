@@ -1,9 +1,8 @@
 import "dotenv/config";
-import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import { User } from "../models/User.js";
 
-const demoUsers = [
+export const demoUsers = [
   {
     name: "Shopera Admin",
     email: "admin@shopera.demo",
@@ -18,47 +17,53 @@ const demoUsers = [
   },
 ];
 
-async function seedDemoUsers() {
-  if (!process.env.MONGO_URI) {
+export async function seedDemoUsers({ isStandalone = false, forceReset = false } = {}) {
+  if (!process.env.MONGO_URI && mongoose.connection.readyState === 0) {
     throw new Error("MONGO_URI is not configured");
   }
 
-  await mongoose.connect(process.env.MONGO_URI);
-
-  const usersToInsert = [];
-  let skipped = 0;
+  if (mongoose.connection.readyState === 0) {
+    await mongoose.connect(process.env.MONGO_URI);
+  }
 
   for (const demoUser of demoUsers) {
-    const existingUser = await User.findOne({ email: demoUser.email }).select("_id").lean();
+    const existingUser = await User.findOne({ email: demoUser.email }).select("+password");
 
     if (existingUser) {
-      skipped += 1;
-      continue;
+      if (forceReset) {
+        existingUser.password = demoUser.password;
+        existingUser.role = demoUser.role;
+        existingUser.isVerified = true;
+        await existingUser.save();
+      }
+    } else {
+      const user = new User({
+        name: demoUser.name,
+        email: demoUser.email,
+        password: demoUser.password,
+        role: demoUser.role,
+        isVerified: true,
+      });
+      await user.save();
     }
-
-    usersToInsert.push({
-      ...demoUser,
-      password: await bcrypt.hash(demoUser.password, 12),
-      isVerified: true,
-    });
   }
 
-  if (usersToInsert.length > 0) {
-    await User.insertMany(usersToInsert, { ordered: true });
-  }
+  console.log("✓ Demo users verified in DB (admin@shopera.demo / customer@shopera.demo)");
 
-  console.log(`Demo user seed complete: ${usersToInsert.length} created, ${skipped} already existed.`);
+  if (isStandalone) {
+    await mongoose.disconnect();
+    console.log("✓ MongoDB Disconnected");
+  }
 }
 
-seedDemoUsers()
-  .then(() => {
-    console.log("Admin login: admin@shopera.demo / Admin@12345");
-    console.log("Customer login: customer@shopera.demo / Customer@12345");
-  })
-  .catch((error) => {
-    console.error(`Demo user seed failed: ${error.message}`);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await mongoose.disconnect();
-  });
+if (process.argv[1] && process.argv[1].replace(/\\/g, "/").endsWith("seedDemoUsers.js")) {
+  seedDemoUsers({ isStandalone: true, forceReset: true })
+    .then(() => {
+      console.log("Admin login: admin@shopera.demo / Admin@12345");
+      console.log("Customer login: customer@shopera.demo / Customer@12345");
+    })
+    .catch((error) => {
+      console.error(`Demo user seed failed: ${error.message}`);
+      process.exitCode = 1;
+    });
+}

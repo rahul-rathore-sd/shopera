@@ -196,32 +196,42 @@ export default function Login() {
           {/* Quick Demo Credentials Autofill */}
           <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 pt-2.5">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 text-center mb-2">
-              Quick One-Click Demo Access
+              Instant One-Click Demo Access
             </p>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() =>
+                disabled={isSubmitting}
+                onClick={() => {
                   setFormData({
                     email: "admin@shopera.demo",
                     password: "Admin@12345",
-                  })
-                }
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/80 px-2.5 py-1.5 text-xs font-bold text-purple-700 hover:bg-purple-100 transition"
+                  });
+                  executeLogin({
+                    email: "admin@shopera.demo",
+                    password: "Admin@12345",
+                  });
+                }}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50/80 px-2.5 py-2 text-xs font-bold text-purple-700 hover:bg-purple-100 disabled:opacity-50 transition shadow-xs"
               >
-                <span>🔑 Admin Role</span>
+                <span>🔑 Login as Admin</span>
               </button>
               <button
                 type="button"
-                onClick={() =>
+                disabled={isSubmitting}
+                onClick={() => {
                   setFormData({
                     email: "customer@shopera.demo",
                     password: "Customer@12345",
-                  })
-                }
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition"
+                  });
+                  executeLogin({
+                    email: "customer@shopera.demo",
+                    password: "Customer@12345",
+                  });
+                }}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 transition shadow-xs"
               >
-                <span>🛍️ Customer Role</span>
+                <span>🛍️ Login as Customer</span>
               </button>
             </div>
           </div>
