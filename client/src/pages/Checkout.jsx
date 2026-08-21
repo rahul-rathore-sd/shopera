@@ -88,8 +88,8 @@ export default function Checkout() {
       });
       const order = orderRes.data.data;
 
-      // If Cash on Delivery, complete immediately
-      if (paymentMethod === "cod") {
+      // If Cash on Delivery or Instant Demo Pay, complete immediately
+      if (paymentMethod === "cod" || paymentMethod === "demo_pay") {
         await fetchCart();
         navigate(`/order-success/${order._id}`);
         return;
@@ -98,7 +98,7 @@ export default function Checkout() {
       // 2. Load Razorpay SDK
       const isLoaded = await loadRazorpayScript();
       if (!isLoaded) {
-        throw new Error("Razorpay SDK failed to load. Please check your connection.");
+        throw new Error("Razorpay SDK failed to load. Please check your internet connection.");
       }
 
       // 3. Generate Razorpay Order Intent from Backend
@@ -107,11 +107,18 @@ export default function Checkout() {
       });
       const rzpData = razorpayOrderRes.data.data;
 
+      // Normalize prefill fields to comply with Razorpay validation
+      const prefillEmail =
+        user?.email && !user.email.endsWith(".demo")
+          ? user.email
+          : "customer@gmail.com";
+      const cleanPhone = (shippingAddress.phone || "").replace(/\D/g, "") || "9876543210";
+
       // 4. Open Razorpay Checkout Modal
       const options = {
         key: rzpData.key,
         amount: rzpData.amount,
-        currency: rzpData.currency,
+        currency: rzpData.currency || "INR",
         name: "Shopera",
         description: `Order Payment #${order._id}`,
         order_id: rzpData.id,
@@ -135,9 +142,9 @@ export default function Checkout() {
           }
         },
         prefill: {
-          name: shippingAddress.fullName,
-          email: user?.email,
-          contact: shippingAddress.phone,
+          name: shippingAddress.fullName || "Customer",
+          email: prefillEmail,
+          contact: cleanPhone,
         },
         theme: {
           color: "#4F46E5",
@@ -147,13 +154,13 @@ export default function Checkout() {
       const razorpayModal = new window.Razorpay(options);
       razorpayModal.on("payment.failed", function (response) {
         setErrorMessage(
-          response.error.description || "Payment attempt failed. Please try again."
+          response.error?.description || "Payment attempt failed. You can use Cash on Delivery or Instant Demo Pay to complete the order."
         );
       });
       razorpayModal.open();
     } catch (err) {
       setErrorMessage(
-        err.response?.data?.message || err.message || "Failed to process order"
+        err.response?.data?.message || err.message || "Failed to process order. You can use Instant Demo Pay or Cash on Delivery."
       );
     } finally {
       setIsProcessing(false);
@@ -363,19 +370,25 @@ export default function Checkout() {
               <div className="space-y-3">
                 {[
                   {
+                    id: "demo_pay",
+                    title: "⚡ Instant Demo Pay (Simulate Paid Order)",
+                    desc: "1-click instant confirmation for portfolio demos & sandbox testing",
+                    badge: "RECOMMENDED FOR TESTING",
+                  },
+                  {
                     id: "upi",
                     title: "UPI / QR Code",
-                    desc: "Google Pay, PhonePe, Paytm, BHIM",
+                    desc: "Google Pay, PhonePe, Paytm, BHIM via Razorpay",
                   },
                   {
                     id: "card",
                     title: "Credit / Debit Card",
-                    desc: "Visa, MasterCard, RuPay, Amex",
+                    desc: "Visa, MasterCard, RuPay, Amex via Razorpay",
                   },
                   {
                     id: "netbanking",
                     title: "Net Banking",
-                    desc: "All Major Indian Banks Supported",
+                    desc: "All Major Indian Banks via Razorpay",
                   },
                   {
                     id: "cod",
@@ -399,7 +412,14 @@ export default function Checkout() {
                       className="mt-1 text-indigo-600 focus:ring-indigo-500"
                     />
                     <div className="flex-1">
-                      <p className="text-sm font-bold text-slate-900">{method.title}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-slate-900">{method.title}</p>
+                        {method.badge && (
+                          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[9px] font-black text-indigo-700">
+                            {method.badge}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-500">{method.desc}</p>
                     </div>
                   </label>
