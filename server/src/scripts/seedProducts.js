@@ -1757,19 +1757,23 @@ async function seedCategories() {
   return categoryMap;
 }
 
-async function seedProducts() {
-  if (!process.env.MONGO_URI) {
+export async function seedProducts({ isStandalone = false, force = true } = {}) {
+  if (!process.env.MONGO_URI && mongoose.connection.readyState === 0) {
     throw new Error("MONGO_URI environment variable is missing.");
   }
 
   console.log("=== STARTING 105-PRODUCT CATALOG SEEDING (15 PER CATEGORY) ===");
-  await mongoose.connect(process.env.MONGO_URI);
+  if (mongoose.connection.readyState === 0) {
+    await mongoose.connect(process.env.MONGO_URI);
+  }
 
   const categoryMap = await seedCategories();
 
-  // Clear existing products to ensure clean catalog with full fields
-  const deleteResult = await Product.deleteMany({});
-  console.log(`✓ Cleared ${deleteResult.deletedCount} previous products.`);
+  // Clear existing products to ensure clean catalog with full fields if force=true
+  if (force) {
+    const deleteResult = await Product.deleteMany({});
+    console.log(`✓ Cleared ${deleteResult.deletedCount} previous products.`);
+  }
 
   const productsToInsert = productsData.map((p) => {
     const slug = slugify(p.title);
@@ -1817,14 +1821,34 @@ async function seedProducts() {
     const cat = await Category.findById(c._id);
     console.log(`- ${cat?.name || "Other"}: ${c.count} products`);
   }
-}
 
-seedProducts()
-  .catch((err) => {
-    console.error("❌ Seed failed:", err);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
+  if (isStandalone) {
     await mongoose.disconnect();
     console.log("✓ MongoDB Disconnected");
-  });
+  }
+
+  return { categoriesCount: categoryMap.size, productsCount: inserted.length };
+}
+
+export async function autoSeedIfEmpty() {
+  try {
+    const productCount = await Product.countDocuments();
+    if (productCount === 0) {
+      console.log("⚡ Database is empty on startup. Auto-seeding 105 catalog products...");
+      await seedProducts({ isStandalone: false, force: false });
+    } else {
+      console.log(`✓ Live database has ${productCount} products.`);
+    }
+  } catch (err) {
+    console.error("⚠️ Auto-seed check warning:", err.message);
+  }
+}
+
+// Auto-run if executed directly as a node script
+if (process.argv[1] && process.argv[1].replace(/\\/g, "/").endsWith("seedProducts.js")) {
+  seedProducts({ isStandalone: true, force: true })
+    .catch((err) => {
+      console.error("❌ Seed failed:", err);
+      process.exitCode = 1;
+    });
+}

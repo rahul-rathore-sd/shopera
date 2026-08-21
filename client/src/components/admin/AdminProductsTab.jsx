@@ -144,6 +144,19 @@ export default function AdminProductsTab({ products, categories, isLoading }) {
     },
   });
 
+  // 7. Admin Seed Catalog Mutation (1-click Cloud DB seeding)
+  const seedCatalogMutation = useMutation({
+    mutationFn: async () => await api.post("/products/admin/seed"),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries(["admin-products"]);
+      queryClient.invalidateQueries(["admin-categories"]);
+      alert(res.data?.message || "Catalog successfully seeded with 105 products!");
+    },
+    onError: (err) => {
+      alert(err.response?.data?.message || "Failed to seed catalog.");
+    },
+  });
+
   // --- FILTER & SORT LOGIC ---
   const filteredProducts = useMemo(() => {
     let result = products.filter((p) => {
@@ -407,6 +420,25 @@ export default function AdminProductsTab({ products, categories, isLoading }) {
                 <span className="hidden sm:inline">Grid</span>
               </button>
             </div>
+
+            {/* Seed 105 Catalog Products Button */}
+            <button
+              onClick={() => {
+                if (window.confirm("Seed or Reset the full 105 products catalog (15 in each category)?")) {
+                  seedCatalogMutation.mutate();
+                }
+              }}
+              disabled={seedCatalogMutation.isLoading}
+              className="flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3.5 py-2 text-xs font-bold text-purple-700 hover:bg-purple-100 dark:border-purple-800 dark:bg-purple-950/40 dark:text-purple-300 transition shadow-xs disabled:opacity-50"
+              title="Seed 105 products directly into Database"
+            >
+              {seedCatalogMutation.isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
+              ) : (
+                <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              )}
+              <span>{seedCatalogMutation.isLoading ? "Seeding..." : "Seed 105 Products"}</span>
+            </button>
 
             {/* Add Product Button */}
             <button

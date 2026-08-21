@@ -379,3 +379,18 @@ export const deleteProduct = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, {}, "Product deleted successfully"));
 });
+
+// 6. Seed / Reset Catalog (Admin)
+export const adminSeedCatalog = asyncHandler(async (req, res) => {
+  const { seedProducts } = await import("../scripts/seedProducts.js");
+  const result = await seedProducts({ isStandalone: false, force: true });
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        result,
+        `Catalog seeded successfully with ${result.productsCount} products across ${result.categoriesCount} categories`
+      )
+    );
+});
