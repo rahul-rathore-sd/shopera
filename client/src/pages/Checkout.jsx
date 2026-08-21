@@ -359,6 +359,18 @@ export default function Checkout() {
                 <p className="mt-0.5">Phone: {shippingAddress.phone}</p>
               </div>
 
+              {/* Razorpay Test Environment Guide */}
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-900">
+                <p className="font-bold flex items-center gap-1.5 text-amber-800">
+                  <span>💡 Razorpay Test Mode Active:</span>
+                </p>
+                <div className="mt-1.5 space-y-1 text-[11px] text-amber-800/90">
+                  <p>• <strong>Domestic Test Card:</strong> <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">4111 1111 1111 1111</code> (Expiry: <code>12/28</code>, CVV: <code>123</code>, OTP: <code>123456</code>)</p>
+                  <p>• <strong>Test UPI ID:</strong> <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">success@razorpay</code> (or click green "Success" button in modal)</p>
+                  <p>• <em>Note: Use Domestic INR test cards above; real/international cards are disabled in test mode.</em></p>
+                </div>
+              </div>
+
               {/* Payment Method Radio Options */}
               <div className="space-y-3">
                 {[
