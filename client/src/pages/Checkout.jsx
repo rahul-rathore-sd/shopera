@@ -107,6 +107,20 @@ export default function Checkout() {
       });
       const rzpData = razorpayOrderRes.data.data;
 
+      // If Razorpay keys are not configured / invalid in dev, complete via sandbox simulation
+      if (rzpData.isMock) {
+        await api.post("/payments/verify-signature", {
+          razorpay_order_id: rzpData.id,
+          razorpay_payment_id: `pay_mock_${Date.now()}`,
+          razorpay_signature: "mock_signature_dev",
+          orderId: order._id,
+        });
+
+        await fetchCart();
+        navigate(`/order-success/${order._id}`);
+        return;
+      }
+
       // 4. Open Razorpay Checkout Modal
       const options = {
         key: rzpData.key,

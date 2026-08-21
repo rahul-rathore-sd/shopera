@@ -1,10 +1,10 @@
-import mongoose from "mongoose";
 import { Order } from "../models/Order.js";
 import { Product } from "../models/Product.js";
 import { Cart } from "../models/Cart.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { withOptionalTransaction } from "../utils/transaction.js";
 
 // 1. Create Order with Atomic Stock Lock
 export const createOrder = asyncHandler(async (req, res) => {
@@ -19,15 +19,15 @@ export const createOrder = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Cannot place order: Cart is empty");
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
+  const createdOrder = await withOptionalTransaction(async (session) => {
+    const sessionOpt = session ? { session } : undefined;
     const orderItems = [];
     let itemsPrice = 0;
 
     for (const item of cart.items) {
-      const product = await Product.findById(item.product).session(session);
+      let query = Product.findById(item.product);
+      if (session) query = query.session(session);
+      const product = await query;
 
       if (!product || !product.isPublished) {
         throw new ApiError(404, `Product '${item.product}' not found or unlisted`);
@@ -49,7 +49,7 @@ export const createOrder = asyncHandler(async (req, res) => {
         // Atomic decrement variant stock and recalculate total
         variant.stock -= item.quantity;
         product.stock = product.variants.reduce((acc, v) => acc + v.stock, 0);
-        await product.save({ session });
+        await product.save(sessionOpt);
 
         const unitPrice = variant.discountPrice || variant.price;
         itemsPrice += unitPrice * item.quantity;
@@ -73,7 +73,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
         // Atomic decrement standard product stock
         product.stock -= item.quantity;
-        await product.save({ session });
+        await product.save(sessionOpt);
 
         const unitPrice = product.baseDiscountPrice || product.basePrice;
         itemsPrice += unitPrice * item.quantity;
@@ -98,8 +98,8 @@ export const createOrder = asyncHandler(async (req, res) => {
     // Initial 4-digit Delivery OTP
     const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
-    // Create Order Document inside transaction
-    const [createdOrder] = await Order.create(
+    // Create Order Document inside transaction/direct
+    const [newOrder] = await Order.create(
       [
         {
           user: req.user._id,
@@ -126,25 +126,20 @@ export const createOrder = asyncHandler(async (req, res) => {
           orderStatus: "placed",
         },
       ],
-      { session }
+      sessionOpt
     );
 
-    // Clear user cart inside transaction
+    // Clear user cart inside transaction/direct
     cart.items = [];
     cart.coupon = { code: "", discountAmount: 0 };
-    await cart.save({ session });
+    await cart.save(sessionOpt);
 
-    await session.commitTransaction();
+    return newOrder;
+  });
 
-    return res
-      .status(201)
-      .json(new ApiResponse(201, createdOrder, "Order placed successfully"));
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    session.endSession();
-  }
+  return res
+    .status(201)
+    .json(new ApiResponse(201, createdOrder, "Order placed successfully"));
 });
 
 // 2. Get User Orders (or All Orders if Admin)
@@ -299,13 +294,15 @@ export const cancelOrder = asyncHandler(async (req, res) => {
     throw new ApiError(400, `Cannot cancel order when status is '${order.orderStatus}'`);
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  await withOptionalTransaction(async (session) => {
+    const sessionOpt = session ? { session } : undefined;
 
-  try {
     // Restock all items back to product inventory
     for (const item of order.orderItems) {
-      const product = await Product.findById(item.product).session(session);
+      let query = Product.findById(item.product);
+      if (session) query = query.session(session);
+      const product = await query;
+
       if (product) {
         if (product.hasVariants && item.variantId) {
           const variant = product.variants.id(item.variantId);
@@ -316,24 +313,17 @@ export const cancelOrder = asyncHandler(async (req, res) => {
         } else {
           product.stock += item.quantity;
         }
-        await product.save({ session });
+        await product.save(sessionOpt);
       }
     }
 
     order.orderStatus = "cancelled";
     order.cancelledAt = new Date();
     order.cancellationReason = reason || "Cancelled by customer";
-    await order.save({ session });
+    await order.save(sessionOpt);
+  });
 
-    await session.commitTransaction();
-
-    return res
-      .status(200)
-      .json(new ApiResponse(200, order, "Order cancelled and stock restored"));
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    session.endSession();
-  }
+  return res
+    .status(200)
+    .json(new ApiResponse(200, order, "Order cancelled and stock restored"));
 });

@@ -9,7 +9,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://shopera-backend.onrender.com',
         changeOrigin: true,
         secure: false,
       },
