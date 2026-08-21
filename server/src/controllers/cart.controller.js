@@ -165,7 +165,7 @@ export const clearCart = asyncHandler(async (req, res) => {
   const cart = await Cart.findOneAndUpdate(
     { user: req.user._id },
     { $set: { items: [], coupon: { code: "", discountAmount: 0 } } },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   return res

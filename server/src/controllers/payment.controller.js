@@ -33,28 +33,36 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
   const options = {
     amount: Math.round(order.pricing.totalAmount * 100),
     currency: "INR",
-    receipt: `order_rcptid_${order._id}`,
+    receipt: `rcpt_${order._id.toString().slice(-20)}`,
     notes: {
       orderId: order._id.toString(),
       userId: req.user._id.toString(),
     },
   };
 
-  const razorpayOrder = await razorpayInstance.orders.create(options);
+  try {
+    const razorpayOrder = await razorpayInstance.orders.create(options);
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        id: razorpayOrder.id,
-        amount: razorpayOrder.amount,
-        currency: razorpayOrder.currency,
-        key: process.env.RAZORPAY_KEY_ID,
-        orderId: order._id,
-      },
-      "Razorpay order generated successfully"
-    )
-  );
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          id: razorpayOrder.id,
+          amount: razorpayOrder.amount,
+          currency: razorpayOrder.currency,
+          key: process.env.RAZORPAY_KEY_ID,
+          orderId: order._id,
+        },
+        "Razorpay order generated successfully"
+      )
+    );
+  } catch (error) {
+    console.error("❌ Razorpay order creation error:", error);
+    throw new ApiError(
+      500,
+      `Payment gateway error: ${error?.error?.description || error?.message || "Failed to create payment intent"}`
+    );
+  }
 });
 
 // 2. Client Callback Signature Verification

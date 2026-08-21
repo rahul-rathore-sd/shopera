@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -9,17 +9,29 @@ import FilterSidebar from "../components/layout/FilterSidebar";
 export default function Home() {
   const [searchParams] = useSearchParams();
   const searchQuery = searchParams.get("search") || "";
+  const paramCategory = searchParams.get("category") || "";
+  const paramSortBy = searchParams.get("sortBy") || "newest";
 
   const [filters, setFilters] = useState({
-    category: "",
+    category: paramCategory,
     minPrice: "",
     maxPrice: "",
     rating: "",
     inStock: "",
-    sortBy: "newest",
+    sortBy: paramSortBy,
     page: 1,
     limit: 12,
   });
+
+  // Sync URL search parameters with filter state
+  useEffect(() => {
+    setFilters((prev) => ({
+      ...prev,
+      category: paramCategory,
+      sortBy: paramSortBy,
+      page: 1,
+    }));
+  }, [paramCategory, paramSortBy]);
 
   const resetFilters = () => {
     setFilters({

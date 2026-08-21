@@ -134,7 +134,7 @@ const productSchema = new mongoose.Schema(
 );
 
 // Slug auto-generation with collision avoidance
-productSchema.pre("save", async function (next) {
+productSchema.pre("save", async function () {
   if (this.isModified("title")) {
     const baseSlug = this.title
       .toLowerCase()
@@ -154,15 +154,13 @@ productSchema.pre("save", async function (next) {
 
     this.slug = slug;
   }
-  next();
 });
 
 // Calculate aggregate stock if product uses variants
-productSchema.pre("save", function (next) {
-  if (this.hasVariants && this.variants.length > 0) {
-    this.stock = this.variants.reduce((total, variant) => total + variant.stock, 0);
+productSchema.pre("save", function () {
+  if (this.hasVariants && this.variants && this.variants.length > 0) {
+    this.stock = this.variants.reduce((total, variant) => total + (variant.stock || 0), 0);
   }
-  next();
 });
 
 // Indexes for search and query performance

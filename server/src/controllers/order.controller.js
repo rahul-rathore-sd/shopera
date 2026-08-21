@@ -95,6 +95,9 @@ export const createOrder = asyncHandler(async (req, res) => {
     const discountPrice = cart.coupon?.discountAmount || 0;
     const totalAmount = Math.max(0, itemsPrice + taxPrice + shippingPrice - discountPrice);
 
+    // Initial 4-digit Delivery OTP
+    const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
+
     // Create Order Document inside transaction
     const [createdOrder] = await Order.create(
       [
@@ -112,6 +115,13 @@ export const createOrder = asyncHandler(async (req, res) => {
           paymentInfo: {
             method: paymentMethod,
             status: paymentMethod === "cod" ? "pending" : "pending",
+          },
+          deliveryPreferences: req.body?.deliveryPreferences || {
+            preferredSlot: "anytime",
+            deliveryInstructions: "",
+          },
+          deliveryAgent: {
+            deliveryOtp,
           },
           orderStatus: "placed",
         },
@@ -171,7 +181,7 @@ export const getOrderById = asyncHandler(async (req, res) => {
 // 4. Update Order Status (Admin)
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status, trackingInfo } = req.body;
+  const { status, trackingInfo, deliveryAgent } = req.body;
 
   const order = await Order.findById(id);
   if (!order) {
@@ -185,6 +195,26 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   if (status) order.orderStatus = status;
   if (trackingInfo) order.trackingInfo = trackingInfo;
 
+  // Handle Out for Delivery Transition
+  if (status === "out_for_delivery") {
+    order.outForDeliveryAt = new Date();
+    order.deliveryAgent = {
+      name: deliveryAgent?.name || order.deliveryAgent?.name || "Vikram Sen",
+      phone: deliveryAgent?.phone || order.deliveryAgent?.phone || "+91 98765 43210",
+      vehicleNumber:
+        deliveryAgent?.vehicleNumber ||
+        order.deliveryAgent?.vehicleNumber ||
+        "MH-02-DN-7890",
+      photoUrl:
+        deliveryAgent?.photoUrl ||
+        order.deliveryAgent?.photoUrl ||
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+      deliveryOtp:
+        order.deliveryAgent?.deliveryOtp ||
+        Math.floor(1000 + Math.random() * 9000).toString(),
+    };
+  }
+
   if (status === "delivered") {
     order.deliveredAt = new Date();
     order.paymentInfo.status = "paid";
@@ -195,6 +225,54 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, order, "Order status updated successfully"));
+});
+
+// 5. Update Customer Delivery Preferences / Reschedule Slot
+export const updateDeliveryPreferences = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { preferredSlot, preferredDate, deliveryInstructions } = req.body;
+
+  const order = await Order.findById(id);
+  if (!order) {
+    throw new ApiError(404, "Order not found");
+  }
+
+  if (
+    order.user.toString() !== req.user._id.toString() &&
+    req.user.role !== "admin"
+  ) {
+    throw new ApiError(403, "Unauthorized to update this order");
+  }
+
+  if (["delivered", "cancelled", "returned"].includes(order.orderStatus)) {
+    throw new ApiError(
+      400,
+      `Cannot update delivery preferences for an order that is '${order.orderStatus}'`
+    );
+  }
+
+  if (!order.deliveryPreferences) {
+    order.deliveryPreferences = {};
+  }
+
+  if (preferredSlot) order.deliveryPreferences.preferredSlot = preferredSlot;
+  if (preferredDate) order.deliveryPreferences.preferredDate = new Date(preferredDate);
+  if (deliveryInstructions !== undefined) {
+    order.deliveryPreferences.deliveryInstructions = deliveryInstructions.trim();
+  }
+  order.deliveryPreferences.rescheduled = true;
+
+  await order.save();
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        order,
+        "Delivery preferences updated successfully"
+      )
+    );
 });
 
 // 5. Cancel Order with Inventory Restock

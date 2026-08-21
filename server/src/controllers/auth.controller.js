@@ -1,14 +1,16 @@
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { User } from "../models/User.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { uploadToCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js";
 
 // Cookie security configurations
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
 };
 
 // Helper to generate access & refresh token pair and persist refresh token
@@ -35,7 +37,16 @@ export const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields (name, email, password) are required");
   }
 
-  const existingUser = await User.findOne({ email: email.toLowerCase() });
+  if (password.length < 8) {
+    throw new ApiError(400, "Password must be at least 8 characters long");
+  }
+
+  const emailRegex = /^\S+@\S+\.\S+$/;
+  if (!emailRegex.test(email.trim())) {
+    throw new ApiError(400, "Please provide a valid email address");
+  }
+
+  const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
   if (existingUser) {
     throw new ApiError(409, "A user with this email already exists");
   }
@@ -81,7 +92,7 @@ export const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Email and password are required");
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() }).select(
+  const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
     "+password"
   );
 
@@ -124,7 +135,7 @@ export const loginUser = asyncHandler(async (req, res) => {
 // 3. Refresh Access Token (Token Rotation)
 export const refreshAccessToken = asyncHandler(async (req, res) => {
   const incomingRefreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
+    req.cookies?.refreshToken || req.body?.refreshToken;
 
   if (!incomingRefreshToken) {
     throw new ApiError(401, "Refresh token is missing");
@@ -178,7 +189,7 @@ export const logoutUser = asyncHandler(async (req, res) => {
     {
       $unset: { refreshToken: 1 },
     },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   return res
@@ -194,3 +205,364 @@ export const getCurrentUser = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
 });
+
+// 6. Change Current Password
+export const changeCurrentPassword = asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword || !newPassword) {
+    throw new ApiError(400, "Both current password and new password are required");
+  }
+
+  if (newPassword.length < 8) {
+    throw new ApiError(400, "New password must be at least 8 characters long");
+  }
+
+  const user = await User.findById(req.user._id).select("+password");
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+  if (!isPasswordCorrect) {
+    throw new ApiError(400, "Current password entered is incorrect");
+  }
+
+  user.password = newPassword;
+  await user.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password changed successfully"));
+});
+
+// 7. Update Account Details (Name, Email)
+export const updateAccountDetails = asyncHandler(async (req, res) => {
+  const { name, email } = req.body;
+
+  if (!name && !email) {
+    throw new ApiError(400, "Please provide name or email to update");
+  }
+
+  const updateData = {};
+  if (name && name.trim()) {
+    updateData.name = name.trim();
+  }
+
+  if (email && email.trim()) {
+    const formattedEmail = email.toLowerCase().trim();
+    const existing = await User.findOne({
+      email: formattedEmail,
+      _id: { $ne: req.user._id },
+    });
+    if (existing) {
+      throw new ApiError(409, "Email is already in use by another account");
+    }
+    updateData.email = formattedEmail;
+  }
+
+  const updatedUser = await User.findByIdAndUpdate(
+    req.user._id,
+    { $set: updateData },
+    { returnDocument: "after", runValidators: true }
+  ).select("-password -refreshToken");
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedUser, "Account details updated successfully"));
+});
+
+// 8. Update User Avatar
+export const updateUserAvatar = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  let avatarUrl = req.body?.avatarUrl;
+  let publicId = "";
+
+  if (req.file?.buffer) {
+    if (user.avatar?.publicId) {
+      await deleteFromCloudinary(user.avatar.publicId).catch(() => null);
+    }
+    const uploaded = await uploadToCloudinary(req.file.buffer, "shopera/avatars");
+    avatarUrl = uploaded.url;
+    publicId = uploaded.publicId;
+  } else if (!avatarUrl) {
+    throw new ApiError(400, "Avatar file or avatarUrl is required");
+  }
+
+  user.avatar = {
+    url: avatarUrl,
+    publicId: publicId || user.avatar?.publicId || "",
+  };
+
+  await user.save({ validateBeforeSave: false });
+
+  const sanitizedUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, sanitizedUser, "Avatar updated successfully"));
+});
+
+// 9. Get User Addresses
+export const getUserAddresses = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id).select("addresses");
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        user?.addresses || [],
+        "User addresses fetched successfully"
+      )
+    );
+});
+
+// 10. Add Shipping Address
+export const addAddress = asyncHandler(async (req, res) => {
+  const {
+    fullName,
+    phone,
+    street,
+    city,
+    state,
+    postalCode,
+    country = "India",
+    isDefault = false,
+  } = req.body;
+
+  if (!fullName || !phone || !street || !city || !state || !postalCode) {
+    throw new ApiError(400, "All address fields are required");
+  }
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const shouldBeDefault = isDefault || user.addresses.length === 0;
+
+  if (shouldBeDefault && user.addresses.length > 0) {
+    user.addresses.forEach((addr) => {
+      addr.isDefault = false;
+    });
+  }
+
+  user.addresses.push({
+    fullName: fullName.trim(),
+    phone: phone.trim(),
+    street: street.trim(),
+    city: city.trim(),
+    state: state.trim(),
+    postalCode: postalCode.trim(),
+    country: country.trim(),
+    isDefault: shouldBeDefault,
+  });
+
+  await user.save();
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, user.addresses, "Address added successfully"));
+});
+
+// 11. Update Shipping Address
+export const updateAddress = asyncHandler(async (req, res) => {
+  const { addressId } = req.params;
+  const {
+    fullName,
+    phone,
+    street,
+    city,
+    state,
+    postalCode,
+    country,
+    isDefault,
+  } = req.body;
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const targetAddress = user.addresses.id(addressId);
+  if (!targetAddress) {
+    throw new ApiError(404, "Address not found");
+  }
+
+  if (isDefault) {
+    user.addresses.forEach((addr) => {
+      addr.isDefault = false;
+    });
+    targetAddress.isDefault = true;
+  } else if (isDefault === false && targetAddress.isDefault) {
+    targetAddress.isDefault = false;
+  }
+
+  if (fullName) targetAddress.fullName = fullName.trim();
+  if (phone) targetAddress.phone = phone.trim();
+  if (street) targetAddress.street = street.trim();
+  if (city) targetAddress.city = city.trim();
+  if (state) targetAddress.state = state.trim();
+  if (postalCode) targetAddress.postalCode = postalCode.trim();
+  if (country) targetAddress.country = country.trim();
+
+  await user.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user.addresses, "Address updated successfully"));
+});
+
+// 12. Delete Shipping Address
+export const deleteAddress = asyncHandler(async (req, res) => {
+  const { addressId } = req.params;
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const address = user.addresses.id(addressId);
+  if (!address) {
+    throw new ApiError(404, "Address not found");
+  }
+
+  const wasDefault = address.isDefault;
+  user.addresses.pull(addressId);
+
+  // If deleted address was default, set the first remaining address as default
+  if (wasDefault && user.addresses.length > 0) {
+    user.addresses[0].isDefault = true;
+  }
+
+  await user.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user.addresses, "Address deleted successfully"));
+});
+
+// 13. Set Default Address
+export const setDefaultAddress = asyncHandler(async (req, res) => {
+  const { addressId } = req.params;
+
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const targetAddress = user.addresses.id(addressId);
+  if (!targetAddress) {
+    throw new ApiError(404, "Address not found");
+  }
+
+  user.addresses.forEach((addr) => {
+    addr.isDefault = addr._id.toString() === addressId;
+  });
+
+  await user.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user.addresses, "Default address set successfully"));
+});
+
+// 14. Forgot Password - Request Reset Token
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    throw new ApiError(400, "Email is required");
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase().trim() });
+  if (!user) {
+    // For security reasons, avoid leaking email existence
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          {},
+          "If an account exists with that email, a password reset instruction has been generated"
+        )
+      );
+  }
+
+  const resetToken = user.createPasswordResetToken();
+  await user.save({ validateBeforeSave: false });
+
+  // In production, send email with reset link containing resetToken
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        resetToken,
+        message: "Password reset token generated. Valid for 15 minutes.",
+      },
+      "Password reset token generated successfully"
+    )
+  );
+});
+
+// 15. Reset Password using Token
+export const resetPassword = asyncHandler(async (req, res) => {
+  const token = req.params?.token || req.body?.token;
+  const { password } = req.body;
+
+  if (!token) {
+    throw new ApiError(400, "Password reset token is required");
+  }
+
+  if (!password || password.length < 8) {
+    throw new ApiError(400, "Password is required and must be at least 8 characters long");
+  }
+
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = await User.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    throw new ApiError(400, "Password reset token is invalid or has expired");
+  }
+
+  user.password = password;
+  user.passwordResetToken = undefined;
+  user.passwordResetExpires = undefined;
+  await user.save();
+
+  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
+    user._id
+  );
+
+  const updatedUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, {
+      ...cookieOptions,
+      maxAge: 15 * 60 * 1000,
+    })
+    .cookie("refreshToken", refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    })
+    .json(
+      new ApiResponse(
+        200,
+        { user: updatedUser, accessToken },
+        "Password has been reset successfully"
+      )
+    );
+});

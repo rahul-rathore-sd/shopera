@@ -7,6 +7,8 @@ import Checkout from "../pages/Checkout";
 import OrderSuccess from "../pages/OrderSuccess";
 import Login from "../pages/Login";
 import Register from "../pages/Register";
+import Profile from "../pages/Profile";
+import Orders from "../pages/Orders";
 import AdminDashboard from "../pages/AdminDashboard";
 import AdminRoute from "./AdminRoute";
 
@@ -33,7 +35,23 @@ export default function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       
-      {/* Protected Routes */}
+      {/* Protected Customer Routes */}
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orders"
+        element={
+          <ProtectedRoute>
+            <Orders />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/checkout"
         element={
@@ -50,9 +68,11 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      {/* Protected Admin Routes */}
       <Route element={<AdminRoute />}>
-  <Route path="/admin/dashboard" element={<AdminDashboard />} />
-</Route>
+        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+      </Route>
     </Routes>
   );
-}
+}

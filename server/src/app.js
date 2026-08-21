@@ -13,9 +13,19 @@ const app = express();
 
 app.set("trust proxy", 1); // Trust first proxy for secure cookie flags
 
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Origin is not allowed by CORS"));
+    },
     credentials: true,
   })
 );
@@ -30,13 +40,8 @@ app.get("/api/v1/health", (req, res) => {
 });
 
 
-// Mount payment routes
+// API routes
 app.use("/api/v1/payments", paymentRouter);
-
-// Mount API routes before errorHandler
-app.use("/api/v1/auth", authRouter);
-
-// Routes declarations
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/categories", categoryRouter);
 app.use("/api/v1/products", productRouter);
