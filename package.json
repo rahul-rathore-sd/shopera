@@ -1,6 +1,7 @@
 {
-  "name": "my-project",
+  "name": "shopera",
   "version": "1.0.0",
+  "description": "Full-stack modern e-commerce platform built with React 19, Node.js, Express, MongoDB, Tailwind CSS, and Razorpay.",
   "private": true,
   "workspaces": [
     "client",
