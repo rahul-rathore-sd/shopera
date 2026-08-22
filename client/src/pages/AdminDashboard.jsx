@@ -283,6 +283,63 @@ export default function AdminDashboard() {
   }, [users, userSearch]);
 
   // Handlers
+  const getNextStatusConfig = (status) => {
+    switch (status) {
+      case "placed":
+        return {
+          nextStatus: "confirmed",
+          label: "Mark Confirmed",
+          shortLabel: "Confirm",
+          icon: CheckCircle2,
+          buttonClass: "bg-blue-600 hover:bg-blue-700 text-white shadow-xs",
+        };
+      case "confirmed":
+      case "processing":
+        return {
+          nextStatus: "shipped",
+          label: "Mark Shipped",
+          shortLabel: "Ship",
+          icon: Truck,
+          buttonClass: "bg-purple-600 hover:bg-purple-700 text-white shadow-xs",
+        };
+      case "shipped":
+        return {
+          nextStatus: "out_for_delivery",
+          label: "Out for Delivery",
+          shortLabel: "Dispatch",
+          icon: Navigation,
+          buttonClass: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs",
+        };
+      case "out_for_delivery":
+        return {
+          nextStatus: "delivered",
+          label: "Mark Delivered",
+          shortLabel: "Deliver",
+          icon: Check,
+          buttonClass: "bg-teal-600 hover:bg-teal-700 text-white shadow-xs",
+        };
+      default:
+        return null;
+    }
+  };
+
+  const handleAdvanceStatus = (order) => {
+    const config = getNextStatusConfig(order.orderStatus);
+    if (!config) return;
+
+    if (config.nextStatus === "out_for_delivery") {
+      updateOrderStatusMutation.mutate({
+        orderId: order._id,
+        status: "out_for_delivery",
+      });
+    } else {
+      updateOrderStatusMutation.mutate({
+        orderId: order._id,
+        status: config.nextStatus,
+      });
+    }
+  };
+
   const handleOpenDispatchModal = (order) => {
     setDispatchOrder(order);
     setDispatchData({
@@ -839,29 +896,74 @@ export default function AdminDashboard() {
                           </td>
 
                           <td className="px-6 py-4">
-                            <select
-                              value={o.orderStatus}
-                              onChange={(e) => {
-                                const newStat = e.target.value;
-                                if (newStat === "out_for_delivery") {
-                                  handleOpenDispatchModal(o);
-                                } else {
-                                  updateOrderStatusMutation.mutate({
-                                    orderId: o._id,
-                                    status: newStat,
-                                  });
+                            <div className="flex flex-col gap-2 min-w-[170px]">
+                              <select
+                                value={o.orderStatus}
+                                onChange={(e) => {
+                                  const newStat = e.target.value;
+                                  if (newStat === "out_for_delivery") {
+                                    handleOpenDispatchModal(o);
+                                  } else {
+                                    updateOrderStatusMutation.mutate({
+                                      orderId: o._id,
+                                      status: newStat,
+                                    });
+                                  }
+                                }}
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                              >
+                                <option value="placed">Placed</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="processing">Processing</option>
+                                <option value="shipped">Shipped</option>
+                                <option value="out_for_delivery">⚡ Out for Delivery</option>
+                                <option value="delivered">Delivered</option>
+                                <option value="cancelled">Cancelled</option>
+                              </select>
+
+                              {/* Order Status Progression Button */}
+                              {(() => {
+                                const nextConfig = getNextStatusConfig(o.orderStatus);
+                                const isUpdatingThisOrder =
+                                  updateOrderStatusMutation.isLoading &&
+                                  updateOrderStatusMutation.variables?.orderId === o._id;
+
+                                if (nextConfig) {
+                                  const IconComponent = nextConfig.icon;
+                                  return (
+                                    <button
+                                      type="button"
+                                      disabled={isUpdatingThisOrder}
+                                      onClick={() => handleAdvanceStatus(o)}
+                                      className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${nextConfig.buttonClass} disabled:opacity-60`}
+                                      title={`Advance status to ${nextConfig.nextStatus}`}
+                                    >
+                                      {isUpdatingThisOrder ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <IconComponent className="h-3.5 w-3.5" />
+                                      )}
+                                      <span>{nextConfig.label}</span>
+                                    </button>
+                                  );
+                                } else if (o.orderStatus === "delivered") {
+                                  return (
+                                    <span className="inline-flex items-center justify-center gap-1 rounded-xl bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                      <span>Delivered</span>
+                                    </span>
+                                  );
+                                } else if (o.orderStatus === "cancelled") {
+                                  return (
+                                    <span className="inline-flex items-center justify-center gap-1 rounded-xl bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20">
+                                      <X className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                                      <span>Cancelled</span>
+                                    </span>
+                                  );
                                 }
-                              }}
-                              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:border-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-                            >
-                              <option value="placed">Placed</option>
-                              <option value="confirmed">Confirmed</option>
-                              <option value="processing">Processing</option>
-                              <option value="shipped">Shipped</option>
-                              <option value="out_for_delivery">⚡ Out for Delivery</option>
-                              <option value="delivered">Delivered</option>
-                              <option value="cancelled">Cancelled</option>
-                            </select>
+                                return null;
+                              })()}
+                            </div>
                           </td>
 
                           <td className="px-6 py-4">
@@ -1439,6 +1541,36 @@ export default function AdminDashboard() {
                   ✕
                 </button>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-200 dark:bg-slate-900 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Status:</span>
+                <span className="font-bold text-slate-900 dark:text-white capitalize">
+                  {packingSlipOrder.orderStatus.replace(/_/g, " ")}
+                </span>
+              </div>
+              {(() => {
+                const nextConfig = getNextStatusConfig(packingSlipOrder.orderStatus);
+                if (!nextConfig) return null;
+                const IconComponent = nextConfig.icon;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleAdvanceStatus(packingSlipOrder);
+                      setPackingSlipOrder({
+                        ...packingSlipOrder,
+                        orderStatus: nextConfig.nextStatus,
+                      });
+                    }}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${nextConfig.buttonClass}`}
+                  >
+                    <IconComponent className="h-3.5 w-3.5" />
+                    <span>{nextConfig.label}</span>
+                  </button>
+                );
+              })()}
             </div>
 
             <div className="rounded-2xl bg-slate-50 p-4 border border-slate-200 space-y-1 dark:bg-slate-900 dark:border-slate-800">
